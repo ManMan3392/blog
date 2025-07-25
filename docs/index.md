@@ -7,7 +7,7 @@ hero:
   text: "Just do it!"
   # tagline: My great project tagline
   image:
-    src: /public/img/avatar.jpg
+    src: /assets/img/avatar.jpg
     alt: VitePress
   actions:
     - theme: brand
