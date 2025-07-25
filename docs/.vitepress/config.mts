@@ -3,6 +3,7 @@ import { defineConfig } from "vitepress";
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
+  base: "/blog/",
   title: "ManMan Blog",
   description: "Just do it!",
   head: [["link", { rel: "icon", href: "../img/avatar.ico" }]],
