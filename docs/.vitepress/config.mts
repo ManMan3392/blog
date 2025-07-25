@@ -6,10 +6,10 @@ export default defineConfig({
   base: "/blog/",
   title: "ManMan Blog",
   description: "Just do it!",
-  head: [["link", { rel: "icon", href: "../img/avatar.ico" }]],
+  head: [["link", { rel: "icon", href: "../public/avatar.ico" }]],
   themeConfig: {
     // https://vitepress.dev/reference/default-theme-config
-    logo: "../img/avatar.ico",
+    logo: "../public/avatar.ico",
     nav: [
       { text: "Home", link: "/" },
       { text: "Examples", link: "/markdown-examples" },
