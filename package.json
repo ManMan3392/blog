@@ -7,7 +7,6 @@
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs"
   },
-  "packageManager": "pnpm@9.0.0",
   "dependencies": {
     "vite-plugin-vitepress-auto-sidebar": "^1.7.1"
   }
