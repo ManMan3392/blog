@@ -2,8 +2,7 @@
 ## 概念
 **webpack** 是一个用于现代JavaScript应用程序的**静态模块打包工具**，当 webpack 处理应用程序时，它会在内部从一个或多个入口点构建一个 **依赖图(dependency graph)**，然后将你项目中所需的每一个模块组合成一个或多个 **bundles**，它们均为**静态资源**，用于展示你的内容。
 webpack具有高配置性，一方面为我们提供了极大的自由去定制化我们的项目，另一方面也为初学者增加了不小的学习门槛，不过，从 v4.0.0 开始，webpack 可以不用再引入一个配置文件来打包项目。
-## 配置
-### 环境变量
+## 环境变量
 在 Node.js 里，process 对象表示当前 Node.js 进程的运行信息和控制接口。它包含了很多属性和方法。process.env 存储了当前系统的环境变量（Environment Variables），是一个普通对象，里面的所有属性值都是字符串，NODE_ENV 是一个约定俗成的环境变量名称，用于表示当前应用的运行环境。可以在项目根目录下的.env 环境变量文件里配置 NODE_ENV（以及其他环境变量）
 - webpack 默认不会直接读取 .env，需要用一个库 dotenv 来加载。
   ```js 
@@ -45,8 +44,8 @@ webpack具有高配置性，一方面为我们提供了极大的自由去定制�
   ```
 - CRA 也会自动读取 .env，但变量必须以 REACT_APP_ 开头
 
-### 配置文件
-#### webpack.common.js
+## 配置文件
+### webpack.common.js
 ```js
 // node内置模块path
 const path = require('path');
@@ -143,7 +142,7 @@ module.exports = {
 };
 
 ```
-#### webpack.prod.js
+### webpack.prod.js
 ```js
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const TerserWebpackPlugin = require('terser-webpack-plugin');
@@ -305,7 +304,7 @@ module.exports = merge(common, {
 
 ```
 
-#### webpack.dev.js
+### webpack.dev.js
 ```js
 const { merge } = require('webpack-merge');
 const common = require('./webpack.common');
@@ -357,7 +356,7 @@ module.exports = merge(common, {
 
 ```
 
-#### 自定义loader
+### 自定义loader
 ```js
 // markdown-loader.js
 import { marked } from "marked";
@@ -420,7 +419,7 @@ module.exports = function (source, map, meta) {
     // }, 2000);
     //会等到异步操作有结果后返回数据
 ```
-#### 自定义plugin
+### 自定义plugin
 ```js
 const { NodeSSH } = require("node-ssh");
 
@@ -470,13 +469,13 @@ module.exports.AutoUpdatePlugin = AutoUpdatePlugin;
 
 ```
 
-#### compiler和complication
+### compiler和complication
 | 对象          | 作用                                            |
 | ----------- | --------------------------------------------- |
 | Compiler    | 整个 webpack 构建过程的控制对象，代表一次完整的构建任务（从 entry 到输出） |
 | Compilation | 单次编译的上下文，包含模块、chunk、资源等，通常在每次 rebuild 时生成     |
 
-#### tapable
+### tapable
 webpack底层实现complier和complication的过程中，使用了tapable库，它是一个事件订阅库，webpack的插件机制就是基于它实现的。
 tapable的核心是事件订阅和发布，compiler和complication都继承了tapable的类，所以它们都有事件订阅和发布的能力。
 compiler的事件订阅和发布是在webpack启动时进行的，而complication的事件订阅和发布是在每次编译时进行的。
@@ -578,7 +577,7 @@ compiler.hooks.AsyncSeriesHook.callAsync("张三", 18, (err, data) => {
 });
 ```
 
-#### webpack构建流程概览
+### webpack构建流程概览
 
 1. 初始化 Compiler
   - webpack 根据配置文件创建 Compiler 实例
