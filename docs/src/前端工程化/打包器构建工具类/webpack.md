@@ -583,35 +583,39 @@ compiler.hooks.AsyncSeriesHook.callAsync("张三", 18, (err, data) => {
   - webpack 根据配置文件创建 Compiler 实例
   - 注册插件（调用 plugin.apply(compiler)）
 
-2. 开始编译 (run / watch)
+2. 注册插件
+   - 通过 plugins 配置和内置的核心功能（比如优化器、entryOption 处理器），都以插件的形式接入。
+   - 插件调用 apply(compiler)，在不同阶段挂载到 Tapable 提供的 hook 上。
+   - 重点：Webpack 的很多功能（优化、HMR、HtmlWebpackPlugin 等）本质就是插件。
+
+3. 开始编译 (run / watch)
   - 执行 compiler.run() 或 compiler.watch()
   - Compiler 钩子触发：beforeRun → run
 
-3. 创建 Compilation
-  - Compiler 调用 new Compilation()
-  - Compilation 钩子触发：thisCompilation → compilation
+4. 从入口文件出发（entry → module graph）
+  - 读取配置里的 entry，找到入口文件。
+  - 调用 loader-runner：对不同文件匹配 rules，经过一系列 loader 转换为 JS 模块。
+  - 用 AST 分析依赖（import / require），再递归解析依赖模块。
+  - 每遇到一个依赖模块，就重复「解析 → loader → AST → 收集依赖」的过程。
+  - 最终形成一个 模块依赖图（Module Graph）。
 
-4. 解析入口文件 (Entry)
+5. 解析入口文件 (Entry)
   - webpack 根据 entry 配置找到入口模块
   - 为每个入口生成对应 Chunk
+  - ![alt text](image-2.png)
 
-5. 模块解析 & Loader 转换
-  - webpack 解析模块依赖（import / require）
-  - 每个模块经过 loader 链处理
-  - 构建模块依赖图（Module Graph）
+6. 生成 Chunk
+  - 根据入口和代码分割规则（如 SplitChunks），将模块打包到不同的 Chunk。
+  - Webpack 会把 runtime 逻辑注入（模块加载机制）。
 
-6. 代码优化 & Chunk 分割
-  - splitChunks 处理：提取公共模块
-  - runtimeChunk 处理：生成 runtime 逻辑
-  - tree-shaking（去掉未使用代码）
+7. 优化与封装（seal 阶段）
+   - Tree-shaking（删除未使用的代码）
+   - Scope Hoisting（作用域提升）
+   - Minify（压缩）
 
-7. 生成 Assets
-  - Compilation 根据模块生成最终文件内容（JS/CSS/图片等）
-  - Plugin 钩子触发
 
-8.  输出文件
-  - 输出文件到 output.path
-  - Plugin 钩子触发：afterEmit
+8.  输出（emit 阶段）
+  - Webpack 把 Chunk 转换为最终文件（bundle.js 等）。
+  - 执行 emit hook，HtmlWebpackPlugin 等插件可以在这里修改输出内容。
+  - 最终将文件写入磁盘到 output.path（一般是 dist/）。
 
-9.  完成构建
-  - Compiler 钩子触发：done → stats 输出
