@@ -123,12 +123,11 @@
 上面两种api也可以引入config.js文件传入配置而非将代码直接传入，都是通过node运行文件使用的
 
 ## rollup插件机制
+核心就是一套内置的生命周期 hooks（buildStart、resolveId、load、transform、generateBundle 等）。打包时照这些阶段来执行，插件只需要实现对应 hook，就会在合适的时间点被调用。完成相应的工作。
 rollup插件可以大致分为两类：Build Hook 与 Output Hook。
 - build Hook即在Build阶段执行的钩子函数，在这个阶段主要进行模块代码的转换、AST 解析以及模块依赖的解析，那么这个阶段的 Hook 对于代码的操作粒度一般为模块级别，也就是单文件级别。
 - Ouput Hook(官方称为Output Generation Hook)，则主要进行代码的打包，对于代码而言，操作粒度一般为 chunk级别(一个 chunk 通常指很多文件打包到一起的产物)。
 
-## rollup插件机制
-核心就是一套内置的生命周期 hooks（buildStart、resolveId、load、transform、generateBundle 等）。打包时照这些阶段来执行，插件只需要实现对应 hook，就会在合适的时间点被调用。完成相应的工作。
 ## 常用hook
 1. 路径解析: resolveId
    一般用来解析模块路径，为Async + First类型即异步优先的钩子，入参分别是当前模块路径、引用当前模块的模块路径、解析参数，返回值可以是 null、string 或者一个对象。
