@@ -124,3 +124,27 @@
 
 ## rollup插件机制
 rollup插件可以大致分为两类：Build Hook 与 Output Hook。
+- build Hook即在Build阶段执行的钩子函数，在这个阶段主要进行模块代码的转换、AST 解析以及模块依赖的解析，那么这个阶段的 Hook 对于代码的操作粒度一般为模块级别，也就是单文件级别。
+- Ouput Hook(官方称为Output Generation Hook)，则主要进行代码的打包，对于代码而言，操作粒度一般为 chunk级别(一个 chunk 通常指很多文件打包到一起的产物)。
+
+## rollup插件机制
+核心就是一套内置的生命周期 hooks（buildStart、resolveId、load、transform、generateBundle 等）。打包时照这些阶段来执行，插件只需要实现对应 hook，就会在合适的时间点被调用。完成相应的工作。
+## 常用hook
+1. 路径解析: resolveId
+   一般用来解析模块路径，为Async + First类型即异步优先的钩子，入参分别是当前模块路径、引用当前模块的模块路径、解析参数，返回值可以是 null、string 或者一个对象。
+   - 返回值为 null 时，会默认交给下一个插件的 resolveId 钩子处理。
+   - 返回值为 string 时，则停止后续插件的处理。
+   - 返回值为一个对象，也会停止后续插件的处理，不过这个对象就可以包含更多的信息了，包括解析后的路径、是否被 enternal、是否需要 tree-shaking 等等。
+2. load
+   load 为Async + First类型，即异步优先的钩子，和resolveId类似。它的作用是通过 resolveId 解析后的路径来加载模块内容。
+  load 钩子的入参是模块 id，返回值一般是 null、string 或者一个对象
+  - 如果返回值为 null，则交给下一个插件处理。
+  - 如果返回值为 string 或者对象，则终止后续插件的处理，如果是对象可以包含 SourceMap、AST 等更详细的信息。
+3. 代码转换: transform
+   transform 钩子为Async + Sequential类型，也就是异步串行钩子，作用是对加载后的模块内容进行自定义的转换。
+   入参分别为模块代码、模块 ID，返回一个包含 code(代码内容) 和 map(SourceMap 内容) 属性的对象，当然也可以返回 null 来跳过当前插件的 transform 处理。需要注意的是，当前插件返回的代码会作为下一个插件 transform 钩子的第一个入参，实现类似于瀑布流的处理。
+4. Chunk 级代码修改: renderChunk
+   有两个入参，分别为 chunk 代码内容、chunk 元信息，返回值跟 transform 钩子类似，既可以返回包含 code 和 map 属性的对象，也可以通过返回 null 来跳过当前钩子的处理。
+5. 产物生成最后一步: generateBundle
+   异步串行的钩子，可以在这个钩子里面自定义删除一些无用的 chunk 或者静态资源，或者自己添加一些文件。
+   入参分别为output 配置、所有打包产物的元信息对象，通过操作元信息对象可以删除一些不需要的 chunk 或者静态资源，也可以通过 插件上下文对象的emitFile方法输出自定义文件。
