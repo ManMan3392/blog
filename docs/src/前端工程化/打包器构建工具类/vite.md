@@ -63,3 +63,158 @@ pnpm create vite
    - 异步 Chunk 加载优化。一般情况下，在异步引入的 Chunk 中,浏览器碰见请求后才加载被依赖的模块，但是vite优化后，可以在加载模块时自动预加载他依赖的模块，节省不必要的网络开销。
 2. 兼容插件机制
    在开发阶段，Vite 借鉴了 WMR 的思路，自己实现了一个 Plugin Container，用来模拟 Rollup 调度各个 Vite 插件的执行逻辑，而 Vite 的插件写法完全兼容 Rollup，因此在生产环境中将所有的 Vite 插件传入 Rollup 也没有问题。 Vite 的做法是从头到尾根植于的 Rollup 的生态，设计了和 Rollup 非常吻合的插件机制。
+
+## vite中的hmr
+### HMR 简介
+HMR 的全称叫做Hot Module Replacement，即模块热替换或者模块热更新。就是在页面模块更新的时候，直接把页面中发生变化的模块替换为新的模块，同时不会影响其它模块的正常运作。正常情况下，vite检测到代码更新了会全局刷新，就是将所有逻辑重新跑一遍，这样很耗时且浪费性能。
+### vite中的hmr
+这套 HMR 系统基于原生的 ESM 模块规范来实现，在文件发生改变时 Vite 会侦测到相应 ES 模块的变化，从而触发相应的 API，实现局部的更新。
+import.meta对象为现代浏览器原生的一个内置对象，Vite 所做的事情就是在这个对象上的 hot 属性中定义了一套完整的属性和方法。因此，可以通过import.meta.hot来访问关于 HMR 的这些属性和方法。
+类型定义如下：
+```ts
+interface ImportMeta {
+  readonly hot?: {
+    readonly data: any
+    accept(): void
+    accept(cb: (mod: any) => void): void
+    accept(dep: string, cb: (mod: any) => void): void
+    accept(deps: string[], cb: (mods: any[]) => void): void
+    prune(cb: () => void): void
+    dispose(cb: (data: any) => void): void
+    decline(): void
+    invalidate(): void
+    on(event: string, cb: (...args: any[]) => void): void
+  }
+}
+
+```
+### hot.accept
+这个方法决定了 Vite 进行热更新的边界，是用来接受模块更新的。一旦 Vite 接受了这个更新，当前模块就会被认为是 HMR 的边界。
+vite接受更新有以下三种情况：
+1. 接受自身模块的更新
+   当模块接受自身的更新时，则当前模块会被认为 HMR 的边界。也就是说，除了当前模块，其他的模块均未受到任何影响。
+   ```js
+   //import.meta.hot.accept()
+   //这样就相当于声明该模块不会导致全局重新渲染，我自己处理。
+   //回调函数里会接收到一个mod，这个参数里包含了最新的模块，(mod) => mod.render()，这样就可以重新渲染这个模块，相当于替换掉了原模块。
+   //完整写法如下:
+   // 条件守卫
+   if (import.meta.hot) {
+   //import.meta.hot对象只有在开发阶段才会被注入到全局，生产环境是访问不到的，另外增加条件守卫之后，打包时识别到 if 条件不成立，会自动把这部分代码从打包产物中移除，来优化资源体积。
+      import.meta.hot.accept((mod) => mod.render())
+   }
+
+   ```
+2. 接受某个子模块的更新
+   父模块监听变化后子模块就不用再监听了
+    ```js
+   // main.ts
+   import { render } from './render';
+   import './state';
+   render();
+   if (import.meta.hot) {
+     import.meta.hot.accept('./render.ts', (newModule) => {
+       newModule.render();
+     })
+   }
+
+   ```
+   第一个参数传入一个依赖的路径，也就是render模块的路径，这就相当于告诉 Vite: 我监听了 render 模块的更新，当它的内容更新的时候，请把最新的内容传给我。同样的，第二个参数中定义了模块变化后的回调函数，这里拿到了 render 模块最新的内容，然后执行其中的渲染逻辑，让页面展示最新的内容。
+3. 接受多个子模块的更新
+   父模块可以接受多个子模块的更新，当其中任何一个子模块更新之后，父模块会成为 HMR 边界。
+   ```js
+      // main.ts
+      import { render } from './render';
+      import { initState } from './state';
+      render();
+      initState();
+      if (import.meta.hot) {
+        import.meta.hot.accept(['./render.ts', './state.ts'], (modules) => {
+          // 自定义更新
+          const [renderModule, stateModule] = modules;
+          if (renderModule) {
+            renderModule.render();
+          }
+          if (stateModule) {
+            stateModule.initState();
+          }
+        })
+      }
+   ```
+   Vite的回调传来的参数modules其实是一个数组，和第一个参数声明的子模块数组一一对应。没有发生变化的子模块返回的就是undefined，有变化的模块返回一个 Module 对象，也就是经过变动后state模块的最新内容。
+### hot.dispose
+但是模块替换后，前一个模块的方法没有被销毁，可能会产生影响，hot.dispose这个api就是用来处理在模块更新、旧模块需要销毁时需要做的一些事情
+```js
+// state.ts
+let timer: number | undefined;
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    if (timer) {
+      clearInterval(timer);
+    }
+  })
+}
+export function initState() {
+  let count = 0;
+  timer = setInterval(() => {
+    let countEle = document.getElementById('count');
+    countEle!.innerText =    count + '';
+  }, 1000);
+}
+```
+这样就可以消除原有定时器带来的影响
+
+### hot.data
+这个属性用来在不同的模块实例间共享一些数据。我们可以用它做到修改其他部分导致页面重新渲染而定时器不重置的效果
+```js
+let timer: number | undefined;
+if (import.meta.hot) {
+   // 初始化 count
+   if (!import.meta.hot.data.count) {
+     import.meta.hot.data.count = 0;
+   }
+  import.meta.hot.dispose(() => {
+    if (timer) {
+      clearInterval(timer);
+    }
+  })
+}
+export function initState() {
+   const getAndIncCount = () => {
+     const data = import.meta.hot?.data || {
+       count: 0
+     };
+     data.count = data.count + 1;
+     return data.count;
+   };
+  timer = setInterval(() => {
+    let countEle = document.getElementById('count');
+     countEle!.innerText =  getAndIncCount() + '';
+  }, 1000);
+}
+
+```
+### 其他属性
+-  import.meta.hot.decline()
+  表示此模块不可热更新，当模块更新时会强制进行页面刷新。
+-  import.meta.hot.invalidate()
+  强制刷新页面。
+- 自定义事件
+  import.meta.hot.on可以监听 HMR 的事件，内部有这么几个事件会自动触发:
+    - vite:beforeUpdate 当模块更新时触发；
+    - vite:beforeFullReload 当即将重新刷新页面时触发；
+    - vite:beforePrune 当不再需要的模块即将被剔除时触发；
+    - vite:error 当发生错误时（例如，语法错误）触发
+   handleHotUpdate 这个插件 Hook 可以触发自定义事件
+   ```js
+   // 插件 Hook（Vite 插件的一部分）
+    handleHotUpdate({ server }) {
+      // 向客户端发送一个自定义事件
+      server.ws.send({
+        type: 'custom', // 固定为 'custom'，表示这是自定义事件
+        event: 'custom-update', // 自定义事件名称（前后端需一致）
+        data: {} // 要传递给前端的数据（可自定义内容）
+      })
+      return [] // 表示不触发默认的模块热更新逻辑
+    }
+   ```
