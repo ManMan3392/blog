@@ -397,5 +397,221 @@ vite-plugin-chunk-split 是一个专门用于 Vite 自定义代码分割的插�
 解决上述提到的两类语法兼容问题，主要需要用到两方面的工具，分别包括:
 - **编译时工具**。代表工具有@babel/preset-env和@babel/plugin-transform-runtime。
 - **运行时基础库**。代表库包括core-js和regenerator-runtime。
-编译时工具的作用是在代码编译阶段进行语法降级及添加 polyfill 代码的引用语句，只是编译阶段用到，运行时并不需要,所以放入package.json中的devDependencies中。    
-运行时基础库是根据 ESMAScript官方语言规范提供各种Polyfill实现代码，主要包括core-js和regenerator-runtime两个基础库，不过在 babel 中也会有一些上层的封装,要放到package.json中的dependencies中
+
+core-js 有三种产物：
+1. core-js:全局 Polyfill
+2. core-js-pure：不会把 Polyfill 注入到全局环境，可以按需引入
+3. core-js-bundle：打包好的版本，包含所有的 Polyfill，不太常用
+
+- 编译时工具的作用是在代码编译阶段进行语法降级及添加 polyfill 代码的引用语句，只是编译阶段用到，运行时并不需要,所以放入package.json中的devDependencies中。    
+- 运行时基础库是根据 ESMAScript官方语言规范提供各种Polyfill实现代码，主要包括core-js和regenerator-runtime两个基础库，不过在 babel 中也会有一些上层的封装，如：@babel/runtime（特例，不包含 core-js 的 Polyfill）、@babel/runtime-corejs2、@babel/runtime-corejs3,要放到package.json中的dependencies中。
+  1. 当使用 useBuiltIns: "usage" 或 "entry" 时，Babel 会将 core-js 中需要的代码片段直接 “复制粘贴” 到打包产物中，core-js 是 “运行时最终会用到其代码” 的库（即使代码是被注入的，源头也是它），而不是仅在开发阶段用的工具（如 Babel 本身，放在 devDependencies）。
+  2. 当使用 @babel/runtime + @babel/plugin-transform-runtime 时，通过 “引用” 的方式调用 @babel/runtime-corejs3 里的 polyfill。所以运行时必须依赖 @babel/runtime-corejs3 这个库。
+
+
+.babelrc.json即 babel 的配置文件，内容如下:
+```ts
+{
+  "presets": [
+    [
+      "@babel/preset-env", 
+      {
+        // 指定兼容的浏览器版本
+        "targets": {
+          "ie": "11"
+        },
+        //也可以用 Browserslist 配置语法:
+        // "targets": "ie >= 11, > 0.5%, not dead"
+        // 也可以在package.json中通过browserslist声明:
+        //  "browserslist": "ie >= 11"
+        // 或者通过.browserslistrc进行声明:
+        //.browserslistrc
+        // ie >= 11
+
+        //常写的配置：
+        // 现代浏览器
+        // last 2 versions and since 2018 and > 0.5%
+        // // 兼容低版本 PC 浏览器
+        // IE >= 11, > 0.5%, not dead
+        // // 兼容低版本移动端浏览器
+        // iOS >= 9, Android >= 4.4, last 2 versions, > 0.2%, not dead
+
+
+
+
+        // 基础库 core-js 的版本，一般指定为最新的大版本
+        "corejs": 3,
+        // Polyfill 注入策略
+        // Polyfill 代码主要来自 corejs 和 regenerator-runtime，因此如果要运行起来，必须要装这两个库。
+        "useBuiltIns": "usage",
+        // 这个配置有两种选项：entry和usage
+        // entry配置规定必须在入口文件手动添加一行代码:
+        // index.js 开头加上
+        // import 'core-js';
+        // 但是无法做到按需导入
+        // usage配置可以实现按需导入
+
+
+
+        // 不将 ES 模块语法转换为其他模块语法
+        "modules": false
+      }
+    ]
+  ]
+}
+
+```
+
+以上讲的方案有很多局限性：
+1. 如果使用新特性，往往是通过基础库(如 core-js)往全局环境添加 Polyfill，如果是开发应用没有任何问题，如果是开发第三方工具库，则很可能会对全局空间造成污染。
+2. 很多工具函数的实现代码(如上面示例中的_defineProperty方法)，会在许多文件中重现出现，造成文件体积冗余。
+### transform-runtime
+transform-runtime方案可以解决@babel/preset-env的种种局限性。作为@babel/preset-env中useBuiltIns配置的替代品，一旦使用transform-runtime，useBuiltIns属性就可以设为 false了。
+```ts
+{
+  "plugins": [
+    // 添加 transform-runtime 插件
+    [
+      "@babel/plugin-transform-runtime", 
+      {
+        "corejs": 3
+      }
+    ]
+  ],
+  "presets": [
+    [
+      "@babel/preset-env", 
+      {
+        "targets": {
+          "ie": "11"
+        },
+        "corejs": 3,
+        // 关闭 @babel/preset-env 默认的 Polyfill 注入
+        "useBuiltIns": false,
+        "modules": false
+      }
+    ]
+  ]
+}
+
+```
+### 在vite中使用
+@vitejs/plugin-legacy是vite官方提供的插件,内部使用 @babel/preset-env 以及 core-js等一系列基础库来进行语法降级和 Polyfill 注入
+```ts
+// vite.config.ts
+import legacy from '@vitejs/plugin-legacy';
+import { defineConfig } from 'vite'
+
+export default defineConfig({
+  plugins: [
+    // 省略其它插件
+    legacy({
+      // 设置目标浏览器，browserslist 配置语法
+      targets: ['ie >= 11'],
+      // 这个参数在插件内部会透传给@babel/preset-env。
+    })
+  ]
+})
+
+```
+通过官方的legacy插件， Vite 会分别打包出Modern模式和Legacy模式的产物，然后将两种产物插入同一个 HTML 里面，Modern产物被放到 type="module"的 script 标签中（现代浏览器），而Legacy产物则被放到带有 nomodule 的 script 标签中（远古一点的浏览器）。
+插件工作流程如下：
+1. 配置输出，生成 Legacy 产物：
+   ```ts
+      const createLegacyOutput = (options = {}) => {
+     return {
+      // 复制原始配置的所有属性（如路径、压缩选项等）。
+       ...options,
+       // 强制将遗留版本的模块格式设为 system（即 SystemJS 模块，一种兼容旧浏览器的模块规范）。
+       format: 'system',
+       // 转换效果: index.[hash].js -> index-legacy.[hash].js,(getLegacyOutputFileName自定义函数)
+       entryFileNames: getLegacyOutputFileName(options.entryFileNames),
+       chunkFileNames: getLegacyOutputFileName(options.chunkFileNames)
+     }
+   }
+    // 获取 Rollup 的配置
+   const { rollupOptions } = config.build
+   // 再从中拿到输出配置 output（output 是 Rollup 中定义产物输出规则的核心配置，可能是一个对象或数组即多入口出口）
+   const { output } = rollupOptions
+   if (Array.isArray(output)) {
+    //是数组就依次执转换，再合并原配置，达到最后两份产物
+     rollupOptions.output = [...output.map(createLegacyOutput), ...output]
+   } else {
+    //不是数组就对该对象转换
+     rollupOptions.output = [createLegacyOutput(output), output || {}]
+   }
+
+   ```
+2. 转译代码并收集所需 polyfill
+   在renderChunk阶段，插件会对 Legacy 模式产物进行语法转译和 Polyfill 收集，这里并不会真正注入Polyfill，而仅仅只是收集Polyfill
+   ```ts
+      {
+     renderChunk(raw, chunk, opts) {
+       // 1. 使用 babel + @babel/preset-env 进行语法转换与 Polyfill 注入
+       // 2. 由于此时已经打包后的 Chunk 已经生成
+       //   这里需要去掉 babel 注入的 import 语句，并记录所需的 Polyfill
+       // 3. 最后的 Polyfill 代码将会在 generateBundle 阶段生成
+     }
+   }
+
+   ```
+3. 单独打包 polyfill 和模块加载器
+   进入generateChunk钩子阶段，现在 Vite 会对之前收集到的Polyfill进行统一的打包,主要逻辑集中在buildPolyfillChunk函数中:
+   ```ts
+   // 打包 Polyfill 代码
+   async function buildPolyfillChunk(
+     name,  // name：polyfill 代码块的名称（如 polyfills-legacy）。
+     imports, // imports：需要包含的 polyfill 模块列表（需引入的兼容性补丁）。
+     bundle, // bundle：打包产物的容器对象，用于后续添加生成的 polyfill 代码块。
+     facadeToChunkMap, // facadeToChunkMap：模块与代码块的映射关系（未在当前代码片段中直接使用）。
+     buildOptions, // buildOptions：构建配置选项（包含 minify 压缩开关、assetsDir 资源目录等）。
+     externalSystemJS // externalSystemJS：是否将 SystemJS 标记为外部依赖（影响 polyfill 插件的行为）。
+   ) {
+     let { minify, assetsDir } = buildOptions
+     //如果配置了需要压缩，就启用丑化功能
+     minify = minify ? 'terser' : false
+     // 调用 Vite 的 build API 进行打包
+     const res = await build({
+       // 根路径设置为插件所在目录
+       // 由于插件的依赖包含`core-js`、`regenerator-runtime`这些运行时基础库
+       // 因此这里 Vite 可以正常解析到基础 Polyfill 库的路径
+       root: __dirname,
+       write: false,
+       // 这里的插件实现了一个虚拟模块，所以不写入
+       // Vite 对于 polyfillId 会返回所有 Polyfill 的引入语句
+       // 该插件会处理 imports 列表，生成包含所有需引入 polyfill 的虚拟模块。
+       plugins: [polyfillsPlugin(imports, externalSystemJS)],
+       build: {
+         rollupOptions: {
+           // 访问 polyfillId
+           input: {
+             // name 暂可视作`polyfills-legacy`
+             // pofyfillId 为一个虚拟模块，经过插件处理后会拿到所有 Polyfill 的引入语句
+             [name]: polyfillId
+           },
+         }
+       }
+     });
+     // 拿到 polyfill 产物 chunk
+     // 已经指定单文件入口，一般情况下不会返回数组，此处为防御性编程，排除其他干扰
+     const _polyfillChunk = Array.isArray(res) ? res[0] : res
+     if (!('output' in _polyfillChunk)) return
+     // 已经指定单文件入口，一般情况下数组里只有一个元素
+     const polyfillChunk = _polyfillChunk.output[0]
+     // 后续做两件事情:
+     // 1. 记录 polyfill chunk 的文件名，方便后续插入到 Modern 模式产物的 HTML 中；
+     // 2. 在 bundle 对象上手动添加 polyfill 的 chunk，保证产物写到磁盘中
+   }
+
+   ```
+4. 插入脚本到 HTML，通过 nomodule 区分加载。
+   拿到 Legacy 模式的产物文件名及 Polyfill Chunk 的文件名，那么就可以通过transformIndexHtml钩子来将这些产物插入到 HTML 的结构中:
+   ```ts
+      {
+     transformIndexHtml(html) {
+       // 1. 插入 Polyfill chunk 对应的 <script nomodule> 标签
+       // 2. 插入 Legacy 产物入口文件对应的 <script nomodule> 标签
+     }
+   }
+
+   ```
