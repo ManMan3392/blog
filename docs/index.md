@@ -24,4 +24,6 @@ features:
     details: webpack vite
   - title: node服务器
     details: koa express mysql
+  - title: 浏览器运行原理
+    details: 浏览器如何渲染一个页面
 ---
